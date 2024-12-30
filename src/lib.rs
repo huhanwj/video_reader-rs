@@ -1,4 +1,4 @@
-use numpy::ndarray::Dim;
+use numpy::ndarray::{Dim, Array4};
 use numpy::{IntoPyArray, PyArray, PyReadonlyArray4};
 mod video_io;
 use log::debug;
@@ -6,7 +6,7 @@ use pyo3::{
     exceptions::PyRuntimeError,
     pyclass, pymethods, pymodule,
     types::{IntoPyDict, PyDict, PyFloat, PyList, PyModule, PyModuleMethods},
-    Bound, PyResult, Python,
+    Bound, PyResult, Python, wrap_pyfunction, PyObject, PyErr,
 };
 use std::sync::Mutex;
 use video_io::{rgb2gray, save_video, DecoderConfig, VideoReader};
@@ -234,7 +234,26 @@ impl PyVideoReader {
             Err(e) => Err(PyRuntimeError::new_err(format!("Lock error: {}", e))),
         }
     }
+
+     #[pyo3(signature = (frame_index))]
+    /// Decodes a single frame from the video corresponding to the index `frame_index`.
+    fn extract_frame<'a>(
+        &'a self,
+        py: Python<'a>,
+        frame_index: usize,
+    ) -> PyResult<Bound<PyArray<u8, Dim<[usize; 4]>>>> {
+        match self.inner.lock() {
+            Ok(mut vr) => {
+                 match vr.extract_frame(frame_index) {
+                        Ok(frame) => Ok(frame.into_pyarray_bound(py)),
+                        Err(e) => Err(PyRuntimeError::new_err(format!("Error: {}", e))),
+                }
+            }
+             Err(e) => Err(PyRuntimeError::new_err(format!("Lock error: {}", e))),
+        }
+    }
 }
+
 
 #[pymodule]
 fn video_reader<'py>(_py: Python<'py>, m: &Bound<'py, PyModule>) -> PyResult<()> {

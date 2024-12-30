@@ -872,6 +872,39 @@ impl VideoReader {
         Ok(video_frames)
     }
 
+    /// Get a single frame from the video by seeking to the closest keyframe and skipping
+    /// the frames until we reach the desired frame index. Heavily inspired by the implementation
+    /// from decord library: https://github.com/dmlc/decord
+    pub fn extract_frame(&mut self, frame_index: usize) -> Result<VideoArray, ffmpeg::Error> {
+        let mut video_frame: VideoArray = Array::zeros((
+            1, // Batch size is 1
+            self.decoder.height as usize,
+            self.decoder.width as usize,
+            3,
+        ));
+
+        // frame rate
+        let fps = self.decoder.fps;
+        // duration of a frame in micro seconds
+        let frame_duration = (1. / fps * 1_000.0).round() as usize;
+
+        let mut scaler = self.get_scaler(AvPixel::RGB24)?;
+
+        // make sure we are at the begining of the stream
+        self.seek_to_start()?;
+
+        self.n_fails = 0;
+        debug!("[NEXT INDICE] frame_index: {frame_index}");
+        self.seek_accurate(
+            frame_index,
+            &frame_duration,
+            &mut video_frame.slice_mut(s![0, .., .., ..]), //  slice the single frame
+            &mut scaler,
+        )?;
+        
+        Ok(video_frame)
+    }
+
     pub fn seek_accurate(
         &mut self,
         frame_index: usize,
